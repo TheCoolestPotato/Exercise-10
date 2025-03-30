@@ -1,0 +1,133 @@
+---
+title: "Exercise 10"
+format: html
+editor: visual
+---
+
+```{r}
+library(lmodel2) 
+library(skimr)
+library(latticeExtra)
+library(sjPlot) 
+library(broom) 
+library(tidyverse) 
+library(mosaic)
+library(manipulate) 
+library(patchwork) 
+library(infer) 
+library(usethis)
+f <- "https://raw.githubusercontent.com/difiore/ada-datasets/refs/heads/main/AVONETdataset1.csv"
+d <- read.csv(f)
+d <- d |> select(Species1, Family1, Order1, Beak.Length_Culmen, Beak.Width, Beak.Depth, Tarsus.Length, Wing.Length, Tail.Length, Mass, Habitat, Migration, Trophic.Level, Trophic.Niche, Min.Latitude, Max.Latitude, Centroid.Latitude, Range.Size, Primary.Lifestyle)
+skim(d)
+d <- d |> mutate(logmass = log(Mass), logrange = log(Range.Size), logbeak = log(Beak.Length_Culmen), logtarsus = log(Tarsus.Length), migration = as.factor(Migration))
+d <- (drop_na(d))
+plot_trop_logmass <- ggplot(data = d, aes(x = Trophic.Level, y = logmass)) +
+                              geom_boxplot() +
+                              geom_jitter(alpha = 0.05)
+plot_mig_logmass <- ggplot(data = d, aes(x = Migration, y = logmass)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05)
+print(plot_trop_logmass)
+print(plot_mig_logmass)
+lm1 <- lm(logmass ~ Trophic.Level, data = d)
+lm2 <- lm(logmass ~ Migration, data = d)
+summary(lm1)
+summary(lm2)
+##In both regression models the global tests are significant. log(mass) differs between trophic levels and migration patterns. For trophic level, herbivore is the reference level, and differs from scavengers. For migration "1" is the reference level, and both levels 2 and 3 are different. ##
+d <- d |> mutate(Migration = relevel(factor(Migration), ref = "3"))
+lm2relevel <- lm(logmass ~ Migration, data = d)
+summary(lm2relevel)
+##this releveled regression model shows logmass differs between level 2 and level 3 migration
+lm2 <- aov(logmass ~ Migration, data = d)
+posthoc <- TukeyHSD(m2, which = "Migration", conf.level = 0.95)
+plot(posthoc)
+##none of the variances cross zero, thus all pairs of levels are significant
+base_F <- aov(logmass ~ Trophic.Level, data = d) |>
+  tidy() |>
+  filter(term == "Trophic.Level") |>
+  pull(statistic)
+permuteF <- d |>
+  specify(logmass ~ Trophic.Level) |>
+  hypothesize(null = "independence") |>
+  generate(reps = 1000, type = "permute") |>
+  calculate(stat = "F")
+p.value <- permuteF |>
+  get_p_value(obs_stat = base_F, direction = "greater")
+##generates p value of 0, implying a number too small for R to keep up with.
+relatebeak <- lm(logbeak ~ logmass, data = d)
+relatetarsus <- lm(logtarsus ~ logmass, data = d)
+d <- d |> mutate(
+  relatebeak = relatebeak$residuals,
+  relatetarsus = relatetarsus$residuals)
+d <- drop_na(d)
+plot_life_tars <- ggplot(data = d, aes(x=Primary.Lifestyle, y=relatetarsus)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+plot_trop_beak <- ggplot(data = d, aes(x=Trophic.Niche, y=relatebeak)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+plot(plot_trop_beak)
+plot(plot_life_tars)
+histogram(d$Range.Size)
+histogram(d$logrange)
+##the range size need to log transformed
+ggplot(data = d, aes(x = Migration, y = logrange)) +
+  geom_violin() +
+  geom_jitter(alpha = 0.05, width = 0.5)
+lm3 <- lm(logrange ~ Migration, data = d)
+summary(lm3)
+##the global test is significant, and log of rangesize is different between level 3 and both level 1 and 2 of migration. ##
+d <- d |> mutate(Migration = relevel(factor(Migration), ref = "1"))
+lm3relevel <- lm(logrange ~ Migration, data = d)
+summary(lm3relevel)
+##the relevel shows log of rangesize is different between level 1 and 2 of migration##
+m3 <- aov(logrange ~ Migration, data = d)
+summary(m3)
+posthoc2 <- TukeyHSD(m3, which = "Migration", conf.level = 0.95)
+plot(posthoc2)
+## none of the analysis cross zero, thus all are statistically significant##
+passeriforme <- filter(d, Order1 == "Passeriformes")
+passplot1 <- ggplot(data=passeriforme, aes(x=Primary.Lifestyle, y=relatebeak)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust=1))
+passplot2 <- ggplot(data=passeriforme, aes(x=Trophic.Level, y=relatebeak)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust=1))
+passplot3 <- ggplot(data = passeriforme, aes(x=Primary.Lifestyle, y=relatebeak)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  facet_wrap(~Trophic.Level) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust=1))
+passplot4 <- ggplot(data = passeriforme, aes(x=Trophic.Level, y=relatebeak)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.05) +
+  facet_wrap(~Primary.Lifestyle) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust=1))
+plot(passplot1)
+plot(passplot2)
+plot(passplot3)
+plot(passplot4)
+m4 <- aov(relatebeak ~ Primary.Lifestyle, data = passeriforme)
+m5 <- aov(relatebeak ~ Trophic.Level, data = passeriforme)
+summary(m4)
+summary(m5)
+## relative beak length is significantly different between variables of both primary lifestyle and trophic level##
+m6 <- aov(relatebeak ~ Primary.Lifestyle + Trophic.Level, data = passeriforme)
+summary(m6)
+##this further shows that relative beak length is predicted by both variables##
+m7 <- aov(relatebeak ~ Primary.Lifestyle + Trophic.Level + Primary.Lifestyle:Trophic.Level, data = passeriforme)
+summary(m7)
+##finally, this shows that primary lifestyle, trophic level, AND their interaction are all factors influencing relative beak length##
+interaction.plot(x.factor = passeriforme$Primary.Lifestyle, xlab = "Primary Lifestyle", trace.factor = passeriforme$Trophic.Level, trace.label = "Trophic Level", response = passeriforme$relatebeak, fun = base::mean, ylab = "Mean Relative Beak Length")
+interaction.plot(x.factor = passeriforme$Trophic.Level, xlab = "Trophic Level", trace.factor = passeriforme$Primary.Lifestyle, trace.label = "Primary Lifestyle", response = passeriforme$relatebeak, fun = base::mean, ylab = "Mean Relative Beak Length")
+```
